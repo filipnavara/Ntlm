@@ -48,6 +48,12 @@ namespace NtlmHttp
                     try
                     {
                         result = await SendAuthenticated(request, cancellationToken, true);
+
+                        if (result.StatusCode != HttpStatusCode.Unauthorized)
+                        {
+                            return result;
+                        }
+                        // Else maybe try canDoNegotiate
                     }
                     catch (Exception ex)
                     {
