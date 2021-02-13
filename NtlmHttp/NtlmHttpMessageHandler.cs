@@ -9,11 +9,10 @@ namespace NtlmHttp
 {
     public class NtlmHttpMessageHandler : DelegatingHandler
     {
-        private readonly NetworkCredential _networkCredential;
+        public  NetworkCredential NetworkCredential { get; set; }
 
-        public NtlmHttpMessageHandler(HttpMessageHandler innerHandler, NetworkCredential networkCredential) : base(innerHandler)
+        public NtlmHttpMessageHandler(HttpMessageHandler innerHandler) : base(innerHandler)
         {
-            _networkCredential = networkCredential;
         }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -86,7 +85,7 @@ namespace NtlmHttp
             request.Headers.Add("Accept", "*/*");
             //request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
 
-            var ntlm = new Ntlm(_networkCredential);
+            var ntlm = new Ntlm(NetworkCredential);
 
             request.Headers.Authorization = CreateAuthenticationHeaderValue(ntlm.CreateNegotiateMessage(spnego: !useNtlm));
             // request.Headers.Add("Authorization", ntlm.CreateNegotiateMessage(spnego: !useNtlm));
@@ -102,6 +101,7 @@ namespace NtlmHttp
                     if (!string.IsNullOrEmpty(blob))
                     {
                         request.Headers.Clear();
+                        request.Headers.Add("Accept", "*/*");
                         // request.Headers.Authorization = CreateAuthenticationHeaderValue(blob);
                         request.Headers.Add("Authorization", blob);
 

@@ -46,7 +46,8 @@ namespace NtlmTest
 
         private async static Task test2(string uri, NetworkCredential networkCredential)
         {
-            var handler = new NtlmHttpMessageHandler(new SocketsHttpHandler(), networkCredential);
+            var handler = new NtlmHttpMessageHandler(new SocketsHttpHandler());
+            handler.NetworkCredential = networkCredential;
 
             var client = new HttpClient(handler);
             var result = await client.GetAsync(uri, CancellationToken.None);
