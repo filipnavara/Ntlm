@@ -37,14 +37,11 @@ namespace NtlmTest
                 }
             }
 
-            await test2(uri, nc);
-
-            var test = new TestNtlm(nc);
-            await test.Test(uri);
+            await Test(uri, nc);
         }
 
 
-        private async static Task test2(string uri, NetworkCredential networkCredential)
+        private async static Task Test(string uri, NetworkCredential networkCredential)
         {
             var handler = new NtlmHttpMessageHandler(new SocketsHttpHandler());
             handler.NetworkCredential = networkCredential;
