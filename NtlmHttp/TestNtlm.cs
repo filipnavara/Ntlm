@@ -1,30 +1,39 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Net;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-
-namespace NtlmTest
+namespace NtlmHttp
 {
-    class Program
+    public class TestNtlm
     {
-        private static NetworkCredential nc;
+        private NetworkCredential nc;
 
-        static async Task Authenticate(String uri, bool useNtlm = true)
+        public TestNtlm(NetworkCredential nc)
         {
-            var handler = new SocketsHttpHandler();
-            var client = new HttpClient(handler);
-            client.DefaultRequestHeaders.Add( "Accept", "*/*");
+            this.nc = nc;
+        }
+
+        private async Task Authenticate(String uri, bool useNtlm = true)
+        {
+            // var handler = new SocketsHttpHandler();
+            // var client = new HttpClient(handler);
+            var client = new HttpClient();
+            client.DefaultRequestHeaders.Add("Accept", "*/*");
 
             var ntlm = new Ntlm(nc);
-            string msg = ntlm.CreateNegotiateMessage(spnego: !useNtlm);
+            // string msg = ntlm.CreateNegotiateMessage(spnego: !useNtlm);
 
             var message = new HttpRequestMessage(HttpMethod.Get, uri);
             message.Headers.Add("Authorization", ntlm.CreateNegotiateMessage(spnego: !useNtlm));
 
+            Console.WriteLine(message);
             HttpResponseMessage response = await client.SendAsync(message, default);
+
             if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
                 foreach (AuthenticationHeaderValue header in response.Headers.WwwAuthenticate)
@@ -34,6 +43,7 @@ namespace NtlmTest
                     {
                         message = new HttpRequestMessage(HttpMethod.Get, uri);
                         message.Headers.Add("Authorization", blob);
+                        Console.WriteLine(message);
                         response = await client.SendAsync(message, default);
                     }
                 }
@@ -42,31 +52,8 @@ namespace NtlmTest
             Console.WriteLine(response);
         }
 
-        static async Task Main(string[] args)
+        public async Task Test(string uri)
         {
-            string uri = args.Length > 0 ? args[0] : "http://github.com/";
-            string env = Environment.GetEnvironmentVariable("CREDENTIALS");
-
-            if (String.IsNullOrEmpty(env))
-            {
-                // lame credentials. cab be updated for testing.
-                nc = new NetworkCredential("test", "????", "");
-            }
-            else
-            {
-                // assume domain\user:password
-                string[] part1 = env.Split(new char[] { ':' } , 2);
-                string[] part2 = part1[0].Split(new char[] { '\\' }, 2);
-                if (part2.Length == 1)
-                {
-                    nc = new NetworkCredential(part1[0], part1[1]);
-                }
-                else
-                {
-                    nc = new NetworkCredential(part2[1], part1[1], part2[0]);
-                }
-            }
-
             var client = new HttpClient();
             HttpResponseMessage probe = await client.GetAsync(uri, CancellationToken.None);
 
@@ -92,7 +79,7 @@ namespace NtlmTest
                 }
 
                 Console.WriteLine("{0} {1} do NTLM authentication", uri, canDoNtlm ? "can" : "cannot");
-                Console.WriteLine("{0} {1} do Negotiate authentication", uri, canDoNegotiate? "can" : "cannot");
+                Console.WriteLine("{0} {1} do Negotiate authentication", uri, canDoNegotiate ? "can" : "cannot");
 
                 if (canDoNtlm)
                 {

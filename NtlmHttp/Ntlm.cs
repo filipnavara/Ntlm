@@ -6,8 +6,9 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Security.Cryptography;
 using System.Formats.Asn1;
+using System.Net;
 
-namespace System.Net
+namespace NtlmHttp
 {
     // Based on https://winprotocoldoc.blob.core.windows.net/productionwindowsarchives/MS-NLMP/%5bMS-NLMP%5d-190923.pdf
     public class Ntlm
@@ -247,7 +248,7 @@ namespace System.Net
 
             if (!spnego)
             {
-                return "NTLM " + Convert.ToBase64String(asBytes, Base64FormattingOptions.None);
+                return "NTLM " + Convert.ToBase64String(asBytes.ToArray(), Base64FormattingOptions.None);
             }
 
             AsnWriter writer = new AsnWriter(AsnEncodingRules.DER);
@@ -353,7 +354,10 @@ namespace System.Net
             byte[] pwHash = new byte[DigestLength];
             byte[] pwBytes = Encoding.Unicode.GetBytes(Credentials.Password);
 
-            Md4.Hash(pwHash, pwBytes);
+            MD4.Hash(pwHash, pwBytes);
+
+            Console.WriteLine(Convert.ToBase64String(pwHash));
+
             HMACMD5 hmac = new HMACMD5(pwHash);
 
             // strangely, user is upper case, domain is not.
@@ -469,6 +473,8 @@ namespace System.Net
 
         public unsafe string ProcessNegotiateChallenge(string challengeString)
         {
+            Console.WriteLine($"ChallengesString {challengeString}");
+
             NegState state = NegState.Unknown;
             string mech = null;
             byte[] blob = null;
@@ -583,7 +589,7 @@ namespace System.Net
             ReadOnlySpan<byte> targetName = GetField(challengeMessage[0].TargetName, asBytes);
             if (Diag)
             {
-                string target = Encoding.Unicode.GetString(targetName);
+                string target = Encoding.Unicode.GetString(targetName.ToArray());
                 Console.WriteLine("Get challenge from '{0}' with 0x{1:x} ({2}) flags", target, flags, FlagsEnumToString<Flags>(flags));
             }
 
