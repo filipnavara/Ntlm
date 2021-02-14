@@ -1,4 +1,29 @@
 # Ntlm
+
+This is a fork of https://github.com/wfurt/Ntlm.
+
+Goal is to have a .NET standard HttpMessageHandler wrapper to support NTLM authentication.
+
+Usage:
+```
+            var handler = new NtlmHttpMessageHandler(new SocketsHttpHandler());
+            handler.NetworkCredential = networkCredential;
+```
+
+The inner handler should be able to be anything: SocketsHttpHandler/CFNetworkHandler/NSUrlSessionHandler/AndroidClientHandler etc
+
+Improvements:
+- Changed MD4 implementation to .NET Standard code
+- Moved code to a wrapper using DelegatingHandler
+- Added NTLM testurl with credentials
+
+Todo
+- Integrate unittests for all platforms and handlers (see https://github.com/JeroenBer/testntlm)
+- Caching of authorization headers
+
+
+# Orginal Ntlm
+
 This is experimental implementation of NTLMv2 written in c#.
 Primary use is for HTTP in cases when HttpClient does not work for whatever reason. 
 
