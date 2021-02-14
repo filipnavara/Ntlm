@@ -11,7 +11,7 @@ using System.Net;
 namespace NtlmHttp
 {
     // Based on https://winprotocoldoc.blob.core.windows.net/productionwindowsarchives/MS-NLMP/%5bMS-NLMP%5d-190923.pdf
-    public class Ntlm
+    internal class Ntlm
     {
         public bool Diag = false;
 

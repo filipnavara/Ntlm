@@ -7,7 +7,7 @@ namespace NtlmHttp
     /// <summary>
     /// Based on https://www.sevecek.com/EnglishPages/Lists/Posts/Post.aspx?ID=90
     /// </summary>
-    public class MD4
+    internal class MD4
     {
         private class Bitwise
         {

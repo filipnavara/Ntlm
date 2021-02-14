@@ -125,20 +125,16 @@ namespace NtlmHttp
 #else
         private async Task<HttpResponseMessage> SendAuthenticated(HttpRequestMessage request, CancellationToken cancellationToken, bool useNtlm = true)
         {
-            var client = new HttpClient(InnerHandler); // TODO We would like to remove this
+            // We would rather not create a new HttpClient for this of course
+            using var client = new HttpClient(InnerHandler);
 
-            // TODO we should duplicate request ?
-            request = new HttpRequestMessage(HttpMethod.Get, request.RequestUri); // TODO We would like to remove this
-
-            request.Headers.Accept.Clear();
-            request.Headers.Add("Accept", "*/*");
-            //request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
-
+            request = await request.CloneAsync();
             var ntlm = new Ntlm(NetworkCredential);
 
             request.Headers.Authorization = CreateAuthenticationHeaderValue(ntlm.CreateNegotiateMessage(spnego: !useNtlm));
 
             Console.WriteLine(request);
+
             // var response = await base.SendAsync(request, cancellationToken);     TODO we would like to do this but doesn't work ?!?!?
             var response = await client.SendAsync(request, cancellationToken);
 
@@ -149,10 +145,7 @@ namespace NtlmHttp
                     string blob = ntlm.ProcessChallenge(header);
                     if (!string.IsNullOrEmpty(blob))
                     {
-                        // TODO we should duplicate request ?
-                        request = new HttpRequestMessage(HttpMethod.Get, request.RequestUri);
-                        request.Headers.Clear();
-                        request.Headers.Add("Accept", "*/*");
+                        request = await request.CloneAsync();
                         request.Headers.Authorization = CreateAuthenticationHeaderValue(blob);
 
                         Console.WriteLine(request);
