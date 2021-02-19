@@ -378,9 +378,11 @@ namespace NtlmHttp
             byte[] pwHash = new byte[DigestLength];
             byte[] pwBytes = Encoding.Unicode.GetBytes(Credentials.Password);
 
-            MD4.Hash(pwHash, pwBytes);
+            MD4Sevecek.Hash(pwHash, pwBytes);
+            var hastTest = new Md4().Hash(pwBytes);
 
             Console.WriteLine(Convert.ToBase64String(pwHash));
+            Console.WriteLine(Convert.ToBase64String(hastTest));
 
             HMACMD5 hmac = new HMACMD5(pwHash);
 

@@ -1,202 +1,291 @@
-﻿using System;
+﻿/* Copyright (C) 1991-2, RSA Data Security, Inc. Created 1991. All
+   rights reserved.
+
+   License to copy and use this software is granted provided that it
+   is identified as the "RSA Data Security, Inc. MD4 Message-Digest
+   Algorithm" in all material mentioning or referencing this software
+   or this function.
+
+   License is also granted to make and use derivative works provided
+   that such works are identified as "derived from the RSA Data
+   Security, Inc. MD4 Message-Digest Algorithm" in all material
+   mentioning or referencing the derived work.
+
+   RSA Data Security, Inc. makes no representations concerning either
+   the merchantability of this software or the suitability of this
+   software for any particular purpose. It is provided "as is"
+   without express or implied warranty of any kind.
+
+   These notices must be retained in any copies of any part of this
+   documentation and/or software.
+ */
+
+using System;
 using System.Collections.Generic;
 using System.Text;
 
 namespace NtlmHttp
 {
-    /// <summary>
-    /// Based on https://www.sevecek.com/EnglishPages/Lists/Posts/Post.aspx?ID=90
-    /// </summary>
-    internal class MD4
+    public class Md4
     {
-        private class Bitwise
+        private const int S11 = 3;
+        private const int S12 = 7;
+        private const int S13 = 11;
+        private const int S14 = 19;
+        private const int S21 = 3;
+        private const int S22 = 5;
+        private const int S23 = 9;
+        private const int S24 = 13;
+        private const int S31 = 3;
+        private const int S32 = 9;
+        private const int S33 = 11;
+        private const int S34 = 15;
+
+        private static byte[] PADDING = {
+          0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        };
+
+        private UInt32[] state = new UInt32[4];        // state (ABCD)
+        private UInt32[] count = new UInt32[2];        // number of bits, modulo 2^64 (lsb first)
+        private byte[] buffer = new byte[64];          //
+
+        // F, G and H are basic MD4 functions.
+        static UInt32 F(UInt32 x, UInt32 y, UInt32 z) => (((x) & (y)) | ((~x) & (z)));
+        static UInt32 G(UInt32 x, UInt32 y, UInt32 z) => (((x) & (y)) | ((x) & (z)) | ((y) & (z)));
+        static UInt32 H(UInt32 x, UInt32 y, UInt32 z) => ((x) ^ (y) ^ (z));
+
+        // ROTATE_LEFT rotates x left n bits.
+        static UInt32 ROTATE_LEFT(UInt32 x, int n) => (((x) << (n)) | ((x) >> (32 - (n))));
+
+        // FF, GG and HH are transformations for rounds 1, 2 and 3
+        // Rotation is separate from addition to prevent recomputation
+        static void FF(ref UInt32 a, UInt32 b, UInt32 c, UInt32 d, UInt32 x, int s)
         {
-            /// <summary>
-            /// Added missing function: 
-            /// </summary>
-            public static UInt32 LoadUInt32(byte[] message, int i)
+            a += F((b), (c), (d)) + (x);
+            a = ROTATE_LEFT((a), (s));
+        }
+
+        static void GG(ref UInt32 a, UInt32 b, UInt32 c, UInt32 d, UInt32 x, int s)
+        {
+            a += G((b), (c), (d)) + (x) + (UInt32)0x5a827999;
+            a = ROTATE_LEFT((a), (s));
+        }
+
+        static void HH(ref UInt32 a, UInt32 b, UInt32 c, UInt32 d, UInt32 x, int s)
+        {
+            a += H((b), (c), (d)) + (x) + (UInt32)0x6ed9eba1;
+            a = ROTATE_LEFT((a), (s));
+        }
+
+        // MD4 initialization. Begins an MD4 operation, writing a new context.
+        private void Init()
+        {
+            count[0] = 0;
+            count[1] = 0;
+
+            // Load magic initialization constants.
+            state[0] = 0x67452301;
+            state[1] = 0xefcdab89;
+            state[2] = 0x98badcfe;
+            state[3] = 0x10325476;
+        }
+
+        // MD4 block update operation. Continues an MD4 message-digest
+        //   operation, processing another message block, and updating the
+        //   context.
+        private void Update(Span<byte> input, int inputLen)
+        {
+            int i, index, partLen;
+
+            // Compute number of bytes mod 64
+            index = (int)((count[0] >> 3) & 0x3F);
+
+            // Update number of bits
+            if ((count[0] += ((UInt32)inputLen << 3)) < ((UInt32)inputLen << 3))
+                count[1]++;
+
+            count[1] += ((UInt32)inputLen >> 29);
+
+            partLen = 64 - index;
+
+            // Transform as many times as possible.
+            if (inputLen >= partLen)
             {
-                return BitConverter.ToUInt32(message, i);
-            }
-        }
+                // MD4_memcpy((POINTER) & context->buffer[index], (POINTER)input, partLen);
+                memcpy(buffer.AsSpan(index), input, partLen);
+                Transform(state, buffer);
 
-        // Note: this implements RFC1320
-
-        private static UInt32 AuxF(UInt32 x, UInt32 y, UInt32 z)
-        {
-            // Note: ... "We first define three auxiliary functions" ...
-            return ((x & y) | ((~x) & z));
-        }
-
-        private static UInt32 AuxG(UInt32 x, UInt32 y, UInt32 z)
-        {
-            // Note: ... "We first define three auxiliary functions" ...
-            return ((x & y) | (x & z) | (y & z));
-        }
-
-        private static UInt32 AuxH(UInt32 x, UInt32 y, UInt32 z)
-        {
-            // Note: ... "We first define three auxiliary functions" ...
-            return (x ^ y ^ z);
-        }
-
-        private static UInt32 LeftRotate(UInt32 x, int s)
-        {
-            // Note: ... "32-bit value obtained by circularly shifting (rotating) X left by s bit positions" ...
-            return (x << s) | (x >> (32 - s));
-        }
-
-        private static void RoundF(ref UInt32 a, ref UInt32 b, ref UInt32 c, ref UInt32 d, UInt32 k, int s, UInt32[] processingBuffer)
-        {
-            a = LeftRotate((a + AuxF(b, c, d) + processingBuffer[k]), s);
-        }
-
-        private static void RoundG(ref UInt32 a, ref UInt32 b, ref UInt32 c, ref UInt32 d, UInt32 k, int s, UInt32[] processingBuffer)
-        {
-            a = LeftRotate(a + AuxG(b, c, d) + processingBuffer[k] + 0x5A827999, s);
-        }
-
-        private static void RoundH(ref UInt32 a, ref UInt32 b, ref UInt32 c, ref UInt32 d, UInt32 k, int s, UInt32[] processingBuffer)
-        {
-            a = LeftRotate(a + AuxH(b, c, d) + processingBuffer[k] + 0x6ED9EBA1, s);
-        }
-
-        public static byte[] Compute(byte[] message)
-        {
-            // Note: ... "The message is "padded" (extended) so that its length (in bits) is congruent to 448, modulo 512." ...
-            int messageLenBit = message.Length * 8;
-
-            int paddedLenBit = (messageLenBit / 512) * 512 + 448;
-            if (paddedLenBit <= messageLenBit) { paddedLenBit += 512; }
-
-            // Note: ... "A 64-bit representation of b (the length of the message before the padding bits were added) is appended to the result of the previous step" ...
-            byte[] paddedMessage = new byte[(paddedLenBit + 64) / 8];
-
-            Array.Copy(message, 0, paddedMessage, 0, message.Length);
-            // Note: ... "a single "1" bit is appended to the message" ...
-            // Note: as the RFC defines, a byte is a sequence of bits with the highest order bit going first
-            paddedMessage[message.Length] = 0x80;
-
-            byte[] uint64messageLen = BitConverter.GetBytes((UInt64)messageLenBit);
-            Array.Copy(uint64messageLen, 0, paddedMessage, paddedMessage.Length - uint64messageLen.Length, uint64messageLen.Length);
-
-            int paddedMessageWords = paddedMessage.Length / 4;
-            int paddedMessage16WordBlocks = paddedMessageWords / 16;
-
-            // Note: ... "These registers are initialized to the following values in hexadecimal" ...
-            UInt32 regA = 0x67452301;
-            UInt32 regB = 0xEFCDAB89;
-            UInt32 regC = 0x98BADCFE;
-            UInt32 regD = 0x10325476;
-
-            UInt32[] processingBuffer = new UInt32[16];
-
-            // Note: ... "Process each 16-word block" ...
-            for (int i = 0; i < paddedMessage16WordBlocks; i++)
-            {
-                for (int j = 0; j < 16; j++)
+                for (i = partLen; i + 63 < inputLen; i += 64)
                 {
-                    processingBuffer[j] = Bitwise.LoadUInt32(paddedMessage, (i * 16 + j) * 4);
+                    Transform(state, input.Slice(i));
                 }
 
-                UInt32 saveA = regA;
-                UInt32 saveB = regB;
-                UInt32 saveC = regC;
-                UInt32 saveD = regD;
-
-                //
-                // Note: ... "Round 1" ...
-
-                RoundF(ref regA, ref regB, ref regC, ref regD, 0, 3, processingBuffer);
-                RoundF(ref regD, ref regA, ref regB, ref regC, 1, 7, processingBuffer);
-                RoundF(ref regC, ref regD, ref regA, ref regB, 2, 11, processingBuffer);
-                RoundF(ref regB, ref regC, ref regD, ref regA, 3, 19, processingBuffer);
-
-                RoundF(ref regA, ref regB, ref regC, ref regD, 4, 3, processingBuffer);
-                RoundF(ref regD, ref regA, ref regB, ref regC, 5, 7, processingBuffer);
-                RoundF(ref regC, ref regD, ref regA, ref regB, 6, 11, processingBuffer);
-                RoundF(ref regB, ref regC, ref regD, ref regA, 7, 19, processingBuffer);
-
-                RoundF(ref regA, ref regB, ref regC, ref regD, 8, 3, processingBuffer);
-                RoundF(ref regD, ref regA, ref regB, ref regC, 9, 7, processingBuffer);
-                RoundF(ref regC, ref regD, ref regA, ref regB, 10, 11, processingBuffer);
-                RoundF(ref regB, ref regC, ref regD, ref regA, 11, 19, processingBuffer);
-
-                RoundF(ref regA, ref regB, ref regC, ref regD, 12, 3, processingBuffer);
-                RoundF(ref regD, ref regA, ref regB, ref regC, 13, 7, processingBuffer);
-                RoundF(ref regC, ref regD, ref regA, ref regB, 14, 11, processingBuffer);
-                RoundF(ref regB, ref regC, ref regD, ref regA, 15, 19, processingBuffer);
-
-                //
-                // Note: ... "Round 2" ...
-
-                RoundG(ref regA, ref regB, ref regC, ref regD, 0, 3, processingBuffer);
-                RoundG(ref regD, ref regA, ref regB, ref regC, 4, 5, processingBuffer);
-                RoundG(ref regC, ref regD, ref regA, ref regB, 8, 9, processingBuffer);
-                RoundG(ref regB, ref regC, ref regD, ref regA, 12, 13, processingBuffer);
-
-                RoundG(ref regA, ref regB, ref regC, ref regD, 1, 3, processingBuffer);
-                RoundG(ref regD, ref regA, ref regB, ref regC, 5, 5, processingBuffer);
-                RoundG(ref regC, ref regD, ref regA, ref regB, 9, 9, processingBuffer);
-                RoundG(ref regB, ref regC, ref regD, ref regA, 13, 13, processingBuffer);
-
-                RoundG(ref regA, ref regB, ref regC, ref regD, 2, 3, processingBuffer);
-                RoundG(ref regD, ref regA, ref regB, ref regC, 6, 5, processingBuffer);
-                RoundG(ref regC, ref regD, ref regA, ref regB, 10, 9, processingBuffer);
-                RoundG(ref regB, ref regC, ref regD, ref regA, 14, 13, processingBuffer);
-
-                RoundG(ref regA, ref regB, ref regC, ref regD, 3, 3, processingBuffer);
-                RoundG(ref regD, ref regA, ref regB, ref regC, 7, 5, processingBuffer);
-                RoundG(ref regC, ref regD, ref regA, ref regB, 11, 9, processingBuffer);
-                RoundG(ref regB, ref regC, ref regD, ref regA, 15, 13, processingBuffer);
-
-                //
-                // Note: ... "Round 3" ...
-
-                RoundH(ref regA, ref regB, ref regC, ref regD, 0, 3, processingBuffer);
-                RoundH(ref regD, ref regA, ref regB, ref regC, 8, 9, processingBuffer);
-                RoundH(ref regC, ref regD, ref regA, ref regB, 4, 11, processingBuffer);
-                RoundH(ref regB, ref regC, ref regD, ref regA, 12, 15, processingBuffer);
-
-                RoundH(ref regA, ref regB, ref regC, ref regD, 2, 3, processingBuffer);
-                RoundH(ref regD, ref regA, ref regB, ref regC, 10, 9, processingBuffer);
-                RoundH(ref regC, ref regD, ref regA, ref regB, 6, 11, processingBuffer);
-                RoundH(ref regB, ref regC, ref regD, ref regA, 14, 15, processingBuffer);
-
-                RoundH(ref regA, ref regB, ref regC, ref regD, 1, 3, processingBuffer);
-                RoundH(ref regD, ref regA, ref regB, ref regC, 9, 9, processingBuffer);
-                RoundH(ref regC, ref regD, ref regA, ref regB, 5, 11, processingBuffer);
-                RoundH(ref regB, ref regC, ref regD, ref regA, 13, 15, processingBuffer);
-
-                RoundH(ref regA, ref regB, ref regC, ref regD, 3, 3, processingBuffer);
-                RoundH(ref regD, ref regA, ref regB, ref regC, 11, 9, processingBuffer);
-                RoundH(ref regC, ref regD, ref regA, ref regB, 7, 11, processingBuffer);
-                RoundH(ref regB, ref regC, ref regD, ref regA, 15, 15, processingBuffer);
-
-                //
-                //
-
-                regA += saveA;
-                regB += saveB;
-                regC += saveC;
-                regD += saveD;
+                index = 0;
+            }
+            else
+            {
+                i = 0;
             }
 
+            /* Buffer remaining input */
 
-            byte[] hash = new byte[16];
-            Array.Copy(BitConverter.GetBytes(regA), 0, hash, 0, 4);
-            Array.Copy(BitConverter.GetBytes(regB), 0, hash, 4, 4);
-            Array.Copy(BitConverter.GetBytes(regC), 0, hash, 8, 4);
-            Array.Copy(BitConverter.GetBytes(regD), 0, hash, 12, 4);
+            // memcpy((POINTER) &context->buffer[index], (POINTER) & input[i], inputLen - i);
+            memcpy(buffer.AsSpan(index), input.Slice(i), inputLen - i);
+        }
+
+        // MD4 finalization. Ends an MD4 message-digest operation, writing the
+        //   the message digest and zeroizing the context.
+        private void Final(Span<byte> digest)
+        {
+            byte[] bits = new byte[8];
+            int index, padLen;
+
+            // Save number of bits
+            Encode(bits, count);
+
+            // Pad out to 56 mod 64.
+            index = (int)((count[0] >> 3) & 0x3f);
+            padLen = (index < 56) ? (56 - index) : (120 - index);
+            Update(PADDING, padLen);
+
+            // Append length (before padding)
+            Update(bits, 8);
+            // Store state in digest
+            Encode(digest, state);
+
+            // Zeroize sensitive information.
+            memset(state, (UInt32) 0);
+            memset(count, (UInt32) 0);
+            memset(buffer, (byte)0);
+        }
+
+        // MD4 basic transformation. Transforms state based on block.
+        private void Transform(UInt32[] state, Span<byte> block)
+        {
+            UInt32 a = state[0], b = state[1], c = state[2], d = state[3];
+            UInt32[] x = new UInt32[16];
+
+            Decode(x, block, 64);
+
+            /* Round 1 */
+            FF(ref a, b, c, d, x[0], S11); /* 1 */
+            FF(ref d, a, b, c, x[1], S12); /* 2 */
+            FF(ref c, d, a, b, x[2], S13); /* 3 */
+            FF(ref b, c, d, a, x[3], S14); /* 4 */
+            FF(ref a, b, c, d, x[4], S11); /* 5 */
+            FF(ref d, a, b, c, x[5], S12); /* 6 */
+            FF(ref c, d, a, b, x[6], S13); /* 7 */
+            FF(ref b, c, d, a, x[7], S14); /* 8 */
+            FF(ref a, b, c, d, x[8], S11); /* 9 */
+            FF(ref d, a, b, c, x[9], S12); /* 10 */
+            FF(ref c, d, a, b, x[10], S13); /* 11 */
+            FF(ref b, c, d, a, x[11], S14); /* 12 */
+            FF(ref a, b, c, d, x[12], S11); /* 13 */
+            FF(ref d, a, b, c, x[13], S12); /* 14 */
+            FF(ref c, d, a, b, x[14], S13); /* 15 */
+            FF(ref b, c, d, a, x[15], S14); /* 16 */
+
+            /* Round 2 */
+            GG(ref a, b, c, d, x[0], S21); /* 17 */
+            GG(ref d, a, b, c, x[4], S22); /* 18 */
+            GG(ref c, d, a, b, x[8], S23); /* 19 */
+            GG(ref b, c, d, a, x[12], S24); /* 20 */
+            GG(ref a, b, c, d, x[1], S21); /* 21 */
+            GG(ref d, a, b, c, x[5], S22); /* 22 */
+            GG(ref c, d, a, b, x[9], S23); /* 23 */
+            GG(ref b, c, d, a, x[13], S24); /* 24 */
+            GG(ref a, b, c, d, x[2], S21); /* 25 */
+            GG(ref d, a, b, c, x[6], S22); /* 26 */
+            GG(ref c, d, a, b, x[10], S23); /* 27 */
+            GG(ref b, c, d, a, x[14], S24); /* 28 */
+            GG(ref a, b, c, d, x[3], S21); /* 29 */
+            GG(ref d, a, b, c, x[7], S22); /* 30 */
+            GG(ref c, d, a, b, x[11], S23); /* 31 */
+            GG(ref b, c, d, a, x[15], S24); /* 32 */
+
+            /* Round 3 */
+            HH(ref a, b, c, d, x[0], S31); /* 33 */
+            HH(ref d, a, b, c, x[8], S32); /* 34 */
+            HH(ref c, d, a, b, x[4], S33); /* 35 */
+            HH(ref b, c, d, a, x[12], S34); /* 36 */
+            HH(ref a, b, c, d, x[2], S31); /* 37 */
+            HH(ref d, a, b, c, x[10], S32); /* 38 */
+            HH(ref c, d, a, b, x[6], S33); /* 39 */
+            HH(ref b, c, d, a, x[14], S34); /* 40 */
+            HH(ref a, b, c, d, x[1], S31); /* 41 */
+            HH(ref d, a, b, c, x[9], S32); /* 42 */
+            HH(ref c, d, a, b, x[5], S33); /* 43 */
+            HH(ref b, c, d, a, x[13], S34); /* 44 */
+            HH(ref a, b, c, d, x[3], S31); /* 45 */
+            HH(ref d, a, b, c, x[11], S32); /* 46 */
+            HH(ref c, d, a, b, x[7], S33); /* 47 */
+            HH(ref b, c, d, a, x[15], S34); /* 48 */
+
+            state[0] += a;
+            state[1] += b;
+            state[2] += c;
+            state[3] += d;
+
+            // Zeroize sensitive information.
+            memset(x, (UInt32)0);
+        }
+
+        /* Encodes input (UINT4) into output (unsigned char). Assumes len is
+             a multiple of 4.
+         */
+        private static void Encode(Span<byte> output, Span<UInt32> input)
+        {
+            int i, j;
+
+            for (i = 0, j = 0; j < output.Length; i++, j += 4)
+            {
+                output[j] = (byte)(input[i] & 0xff);
+                output[j + 1] = (byte)((input[i] >> 8) & 0xff);
+                output[j + 2] = (byte)((input[i] >> 16) & 0xff);
+                output[j + 3] = (byte)((input[i] >> 24) & 0xff);
+            }
+        }
+
+        private static void Decode(Span<UInt32> output, Span<byte> input, int len)
+        {
+            int i, j;
+
+            for (i = 0, j = 0; j < len; i++, j += 4)
+            {
+                output[i] = ((UInt32)input[j]) | (((UInt32)input[j + 1]) << 8) | (((UInt32)input[j + 2]) << 16) | (((UInt32)input[j + 3]) << 24);
+            }
+        }
+
+        // Note: Replace "for loop" with standard memcpy if possible.
+        private static void memcpy(Span<byte> output, Span<byte> input, int len)
+        {
+            for (var i = 0; i < len; i++)
+            {
+                output[i] = input[i];
+            }
+        }
+
+        // Note: Replace "for loop" with standard memset if possible.
+        private static void memset<T>(Span<T> output, T value)
+        {
+            for (var i = 0; i < output.Length; i++)
+            {
+                output[i] = value;
+            }
+        }
+
+        public byte[] Hash(Span<byte> input)
+        {
+            var hash = new byte[16];
+
+            Init();
+            Update(input, input.Length);
+            Final(hash);
 
             return hash;
         }
 
-        // Added for compatiblity
-        public static void Hash(Span<byte> output, Span<byte> input)
-        {
-            var result = Compute(input.ToArray());
-            result.CopyTo(output);
-        }
     }
 }
