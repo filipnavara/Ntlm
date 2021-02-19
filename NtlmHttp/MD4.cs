@@ -41,7 +41,7 @@ namespace NtlmHttp
         private const int S33 = 11;
         private const int S34 = 15;
 
-        private static byte[] PADDING = {
+        private static byte[] Padding = {
           0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
@@ -52,31 +52,31 @@ namespace NtlmHttp
         private byte[] buffer = new byte[64];          //
 
         // F, G and H are basic MD4 functions.
-        static UInt32 F(UInt32 x, UInt32 y, UInt32 z) => (((x) & (y)) | ((~x) & (z)));
-        static UInt32 G(UInt32 x, UInt32 y, UInt32 z) => (((x) & (y)) | ((x) & (z)) | ((y) & (z)));
-        static UInt32 H(UInt32 x, UInt32 y, UInt32 z) => ((x) ^ (y) ^ (z));
+        static UInt32 F(UInt32 x, UInt32 y, UInt32 z) => (x & y) | (~x & z);
+        static UInt32 G(UInt32 x, UInt32 y, UInt32 z) => (x & y) | (x & z) | (y & z);
+        static UInt32 H(UInt32 x, UInt32 y, UInt32 z) => x ^ y ^ z;
 
-        // ROTATE_LEFT rotates x left n bits.
-        static UInt32 ROTATE_LEFT(UInt32 x, int n) => (((x) << (n)) | ((x) >> (32 - (n))));
+        // rotates x left n bits.
+        static UInt32 RotateLeft(UInt32 x, int n) => (x << n) | (x >> (32 - n));
 
         // FF, GG and HH are transformations for rounds 1, 2 and 3
         // Rotation is separate from addition to prevent recomputation
         static void FF(ref UInt32 a, UInt32 b, UInt32 c, UInt32 d, UInt32 x, int s)
         {
-            a += F((b), (c), (d)) + (x);
-            a = ROTATE_LEFT((a), (s));
+            a += F(b, c, d) + x;
+            a = RotateLeft(a, s);
         }
 
         static void GG(ref UInt32 a, UInt32 b, UInt32 c, UInt32 d, UInt32 x, int s)
         {
-            a += G((b), (c), (d)) + (x) + (UInt32)0x5a827999;
-            a = ROTATE_LEFT((a), (s));
+            a += G(b, c, d) + x + (UInt32)0x5a827999;
+            a = RotateLeft(a, s);
         }
 
         static void HH(ref UInt32 a, UInt32 b, UInt32 c, UInt32 d, UInt32 x, int s)
         {
-            a += H((b), (c), (d)) + (x) + (UInt32)0x6ed9eba1;
-            a = ROTATE_LEFT((a), (s));
+            a += H(b, c, d) + x + (UInt32)0x6ed9eba1;
+            a = RotateLeft(a, s);
         }
 
         // MD4 initialization. Begins an MD4 operation, writing a new context.
@@ -92,9 +92,10 @@ namespace NtlmHttp
             state[3] = 0x10325476;
         }
 
-        // MD4 block update operation. Continues an MD4 message-digest
-        //   operation, processing another message block, and updating the
-        //   context.
+        /// <summary>
+        /// MD4 block update operation. Continues an MD4 message-digest
+        /// operation, processing another message block, and updating the context.
+        /// </summary>
         private void Update(Span<byte> input, int inputLen)
         {
             int i, index, partLen;
@@ -104,7 +105,9 @@ namespace NtlmHttp
 
             // Update number of bits
             if ((count[0] += ((UInt32)inputLen << 3)) < ((UInt32)inputLen << 3))
+            {
                 count[1]++;
+            }
 
             count[1] += ((UInt32)inputLen >> 29);
 
@@ -113,8 +116,7 @@ namespace NtlmHttp
             // Transform as many times as possible.
             if (inputLen >= partLen)
             {
-                // MD4_memcpy((POINTER) & context->buffer[index], (POINTER)input, partLen);
-                memcpy(buffer.AsSpan(index), input, partLen);
+                Copy(buffer.AsSpan(index), input, partLen);
                 Transform(state, buffer);
 
                 for (i = partLen; i + 63 < inputLen; i += 64)
@@ -129,17 +131,18 @@ namespace NtlmHttp
                 i = 0;
             }
 
-            /* Buffer remaining input */
-
-            // memcpy((POINTER) &context->buffer[index], (POINTER) & input[i], inputLen - i);
-            memcpy(buffer.AsSpan(index), input.Slice(i), inputLen - i);
+            // Buffer remaining input
+            Copy(buffer.AsSpan(index), input.Slice(i), inputLen - i);
         }
 
-        // MD4 finalization. Ends an MD4 message-digest operation, writing the
-        //   the message digest and zeroizing the context.
+        /// <summary>
+        /// MD4 finalization. Ends an MD4 message-digest operation, writing the
+        /// the message digest and zeroizing the context.
+        /// </summary>
+        /// <param name="digest"></param>
         private void Final(Span<byte> digest)
         {
-            byte[] bits = new byte[8];
+            var bits = new byte[8];
             int index, padLen;
 
             // Save number of bits
@@ -148,20 +151,23 @@ namespace NtlmHttp
             // Pad out to 56 mod 64.
             index = (int)((count[0] >> 3) & 0x3f);
             padLen = (index < 56) ? (56 - index) : (120 - index);
-            Update(PADDING, padLen);
+            Update(Padding, padLen);
 
             // Append length (before padding)
             Update(bits, 8);
+
             // Store state in digest
             Encode(digest, state);
 
             // Zeroize sensitive information.
-            memset(state, (UInt32) 0);
-            memset(count, (UInt32) 0);
-            memset(buffer, (byte)0);
+            Clear<UInt32>(state);
+            Clear<UInt32>(count);
+            Clear<byte>(buffer);
         }
 
-        // MD4 basic transformation. Transforms state based on block.
+        /// <summary>
+        /// MD4 basic transformation. Transforms state based on block.
+        /// </summary>
         private void Transform(UInt32[] state, Span<byte> block)
         {
             UInt32 a = state[0], b = state[1], c = state[2], d = state[3];
@@ -169,59 +175,59 @@ namespace NtlmHttp
 
             Decode(x, block, 64);
 
-            /* Round 1 */
-            FF(ref a, b, c, d, x[0], S11); /* 1 */
-            FF(ref d, a, b, c, x[1], S12); /* 2 */
-            FF(ref c, d, a, b, x[2], S13); /* 3 */
-            FF(ref b, c, d, a, x[3], S14); /* 4 */
-            FF(ref a, b, c, d, x[4], S11); /* 5 */
-            FF(ref d, a, b, c, x[5], S12); /* 6 */
-            FF(ref c, d, a, b, x[6], S13); /* 7 */
-            FF(ref b, c, d, a, x[7], S14); /* 8 */
-            FF(ref a, b, c, d, x[8], S11); /* 9 */
-            FF(ref d, a, b, c, x[9], S12); /* 10 */
-            FF(ref c, d, a, b, x[10], S13); /* 11 */
-            FF(ref b, c, d, a, x[11], S14); /* 12 */
-            FF(ref a, b, c, d, x[12], S11); /* 13 */
-            FF(ref d, a, b, c, x[13], S12); /* 14 */
-            FF(ref c, d, a, b, x[14], S13); /* 15 */
-            FF(ref b, c, d, a, x[15], S14); /* 16 */
+            // Round 1
+            FF(ref a, b, c, d, x[0], S11); // 1
+            FF(ref d, a, b, c, x[1], S12); // 2
+            FF(ref c, d, a, b, x[2], S13); // 3
+            FF(ref b, c, d, a, x[3], S14); // 4
+            FF(ref a, b, c, d, x[4], S11); // 5
+            FF(ref d, a, b, c, x[5], S12); // 6
+            FF(ref c, d, a, b, x[6], S13); // 7
+            FF(ref b, c, d, a, x[7], S14); // 8
+            FF(ref a, b, c, d, x[8], S11); // 9
+            FF(ref d, a, b, c, x[9], S12); // 10
+            FF(ref c, d, a, b, x[10], S13); // 11
+            FF(ref b, c, d, a, x[11], S14); // 12
+            FF(ref a, b, c, d, x[12], S11); // 13
+            FF(ref d, a, b, c, x[13], S12); // 14
+            FF(ref c, d, a, b, x[14], S13); // 15
+            FF(ref b, c, d, a, x[15], S14); // 16
 
-            /* Round 2 */
-            GG(ref a, b, c, d, x[0], S21); /* 17 */
-            GG(ref d, a, b, c, x[4], S22); /* 18 */
-            GG(ref c, d, a, b, x[8], S23); /* 19 */
-            GG(ref b, c, d, a, x[12], S24); /* 20 */
-            GG(ref a, b, c, d, x[1], S21); /* 21 */
-            GG(ref d, a, b, c, x[5], S22); /* 22 */
-            GG(ref c, d, a, b, x[9], S23); /* 23 */
-            GG(ref b, c, d, a, x[13], S24); /* 24 */
-            GG(ref a, b, c, d, x[2], S21); /* 25 */
-            GG(ref d, a, b, c, x[6], S22); /* 26 */
-            GG(ref c, d, a, b, x[10], S23); /* 27 */
-            GG(ref b, c, d, a, x[14], S24); /* 28 */
-            GG(ref a, b, c, d, x[3], S21); /* 29 */
-            GG(ref d, a, b, c, x[7], S22); /* 30 */
-            GG(ref c, d, a, b, x[11], S23); /* 31 */
-            GG(ref b, c, d, a, x[15], S24); /* 32 */
+            // Round 2
+            GG(ref a, b, c, d, x[0], S21); // 17
+            GG(ref d, a, b, c, x[4], S22); // 18
+            GG(ref c, d, a, b, x[8], S23); // 19
+            GG(ref b, c, d, a, x[12], S24); // 20
+            GG(ref a, b, c, d, x[1], S21); // 21
+            GG(ref d, a, b, c, x[5], S22); // 22
+            GG(ref c, d, a, b, x[9], S23); // 23
+            GG(ref b, c, d, a, x[13], S24); // 24
+            GG(ref a, b, c, d, x[2], S21); // 25
+            GG(ref d, a, b, c, x[6], S22); // 26
+            GG(ref c, d, a, b, x[10], S23); // 27
+            GG(ref b, c, d, a, x[14], S24); // 28
+            GG(ref a, b, c, d, x[3], S21); // 29
+            GG(ref d, a, b, c, x[7], S22); // 30
+            GG(ref c, d, a, b, x[11], S23); // 31
+            GG(ref b, c, d, a, x[15], S24); // 32
 
-            /* Round 3 */
-            HH(ref a, b, c, d, x[0], S31); /* 33 */
-            HH(ref d, a, b, c, x[8], S32); /* 34 */
-            HH(ref c, d, a, b, x[4], S33); /* 35 */
-            HH(ref b, c, d, a, x[12], S34); /* 36 */
-            HH(ref a, b, c, d, x[2], S31); /* 37 */
-            HH(ref d, a, b, c, x[10], S32); /* 38 */
-            HH(ref c, d, a, b, x[6], S33); /* 39 */
-            HH(ref b, c, d, a, x[14], S34); /* 40 */
-            HH(ref a, b, c, d, x[1], S31); /* 41 */
-            HH(ref d, a, b, c, x[9], S32); /* 42 */
-            HH(ref c, d, a, b, x[5], S33); /* 43 */
-            HH(ref b, c, d, a, x[13], S34); /* 44 */
-            HH(ref a, b, c, d, x[3], S31); /* 45 */
-            HH(ref d, a, b, c, x[11], S32); /* 46 */
-            HH(ref c, d, a, b, x[7], S33); /* 47 */
-            HH(ref b, c, d, a, x[15], S34); /* 48 */
+            // Round 3
+            HH(ref a, b, c, d, x[0], S31); // 33
+            HH(ref d, a, b, c, x[8], S32); // 34
+            HH(ref c, d, a, b, x[4], S33); // 35
+            HH(ref b, c, d, a, x[12], S34); // 36
+            HH(ref a, b, c, d, x[2], S31); // 37
+            HH(ref d, a, b, c, x[10], S32); // 38
+            HH(ref c, d, a, b, x[6], S33); // 39
+            HH(ref b, c, d, a, x[14], S34); // 40
+            HH(ref a, b, c, d, x[1], S31); // 41
+            HH(ref d, a, b, c, x[9], S32); // 42
+            HH(ref c, d, a, b, x[5], S33); // 43
+            HH(ref b, c, d, a, x[13], S34); // 44
+            HH(ref a, b, c, d, x[3], S31); // 45
+            HH(ref d, a, b, c, x[11], S32); // 46
+            HH(ref c, d, a, b, x[7], S33); // 47
+            HH(ref b, c, d, a, x[15], S34); // 48
 
             state[0] += a;
             state[1] += b;
@@ -229,12 +235,10 @@ namespace NtlmHttp
             state[3] += d;
 
             // Zeroize sensitive information.
-            memset(x, (UInt32)0);
+            Clear<UInt32>(x);
         }
 
-        /* Encodes input (UINT4) into output (unsigned char). Assumes len is
-             a multiple of 4.
-         */
+        // Encodes input (UINT4) into output (unsigned char). Assumes len is a multiple of 4.
         private static void Encode(Span<byte> output, Span<UInt32> input)
         {
             int i, j;
@@ -258,22 +262,15 @@ namespace NtlmHttp
             }
         }
 
-        // Note: Replace "for loop" with standard memcpy if possible.
-        private static void memcpy(Span<byte> output, Span<byte> input, int len)
+        private static void Copy(Span<byte> output, Span<byte> input, int len)
         {
-            for (var i = 0; i < len; i++)
-            {
-                output[i] = input[i];
-            }
+            input.Slice(0, len).CopyTo(output);
         }
 
         // Note: Replace "for loop" with standard memset if possible.
-        private static void memset<T>(Span<T> output, T value)
+        private static void Clear<T>(Span<T> output)
         {
-            for (var i = 0; i < output.Length; i++)
-            {
-                output[i] = value;
-            }
+            output.Clear();
         }
 
         public byte[] Hash(Span<byte> input)
