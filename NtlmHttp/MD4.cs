@@ -21,8 +21,6 @@
  */
 
 using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace NtlmHttp
 {
@@ -238,7 +236,7 @@ namespace NtlmHttp
             Clear<UInt32>(x);
         }
 
-        // Encodes input (UINT4) into output (unsigned char). Assumes len is a multiple of 4.
+        // Encodes input (UInt32) into output (byte). Assumes len is a multiple of 4.
         private static void Encode(byte[] output, Span<UInt32> input)
         {
             int i, j;
@@ -264,7 +262,6 @@ namespace NtlmHttp
             input.Slice(0, len).CopyTo(output);
         }
 
-        // Note: Replace "for loop" with standard memset if possible.
         private static void Clear<T>(Span<T> output)
         {
             output.Clear();
