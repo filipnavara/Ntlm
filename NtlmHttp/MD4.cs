@@ -140,7 +140,7 @@ namespace NtlmHttp
         /// the message digest and zeroizing the context.
         /// </summary>
         /// <param name="digest"></param>
-        private void Final(Span<byte> digest)
+        private void Final(byte[] digest)
         {
             var bits = new byte[8];
             int index, padLen;
@@ -239,16 +239,13 @@ namespace NtlmHttp
         }
 
         // Encodes input (UINT4) into output (unsigned char). Assumes len is a multiple of 4.
-        private static void Encode(Span<byte> output, Span<UInt32> input)
+        private static void Encode(byte[] output, Span<UInt32> input)
         {
             int i, j;
 
             for (i = 0, j = 0; j < output.Length; i++, j += 4)
             {
-                output[j] = (byte)(input[i] & 0xff);
-                output[j + 1] = (byte)((input[i] >> 8) & 0xff);
-                output[j + 2] = (byte)((input[i] >> 16) & 0xff);
-                output[j + 3] = (byte)((input[i] >> 24) & 0xff);
+                BitConverter.GetBytes(input[i]).CopyTo(output, j);
             }
         }
 
@@ -258,7 +255,7 @@ namespace NtlmHttp
 
             for (i = 0, j = 0; j < len; i++, j += 4)
             {
-                output[i] = ((UInt32)input[j]) | (((UInt32)input[j + 1]) << 8) | (((UInt32)input[j + 2]) << 16) | (((UInt32)input[j + 3]) << 24);
+                output[i] = BitConverter.ToUInt32(input.Slice(j));
             }
         }
 
