@@ -19,7 +19,7 @@ namespace NtlmHttpTests
         public void HashTest(string input, string expected)
         {
             // Arrange
-            var md4 = new Md4();
+            var md4 = new MD4();
             var bytes = Encoding.ASCII.GetBytes(input);
 
             // Act

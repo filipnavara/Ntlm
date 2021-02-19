@@ -26,7 +26,7 @@ using System.Text;
 
 namespace NtlmHttp
 {
-    public class Md4
+    public class MD4
     {
         private const int S11 = 3;
         private const int S12 = 7;

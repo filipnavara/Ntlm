@@ -377,7 +377,7 @@ namespace NtlmHttp
         {
             byte[] pwBytes = Encoding.Unicode.GetBytes(Credentials.Password);
 
-            var pwHash = new Md4().Hash(pwBytes);
+            var pwHash = new MD4().Hash(pwBytes);
 
             Console.WriteLine(Convert.ToBase64String(pwHash));
 
