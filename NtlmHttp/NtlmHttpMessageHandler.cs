@@ -22,9 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-// #define NOT_WORKING
-
 using System;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -110,19 +109,21 @@ namespace NtlmHttp
             return result;
         }
 
-#if NOT_WORKING
         private async Task<HttpResponseMessage> SendAuthenticated(HttpRequestMessage request, CancellationToken cancellationToken, bool useNtlm = true)
         {
-            request.Headers.Accept.Clear();
-            request.Headers.Add("Accept", "*/*");
-            //request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
-
             var ntlm = new Ntlm(NetworkCredential);
 
+            request = await request.CloneAsync();
             request.Headers.Authorization = CreateAuthenticationHeaderValue(ntlm.CreateNegotiateMessage(spnego: !useNtlm));
+            // Use single connection since NTLM is session-based authentication
+            request.Headers.ConnectionClose = false;
+            // Enforce HTTP/1.1, newer HTTP version are not supported
+            request.Version = new Version(1, 1);
 
             Console.WriteLine(request);
             var response = await base.SendAsync(request, cancellationToken);
+            // Discard the content of server's reply
+            await response.Content.CopyToAsync(Stream.Null);
 
             if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
@@ -131,9 +132,6 @@ namespace NtlmHttp
                     string blob = ntlm.ProcessChallenge(header);
                     if (!string.IsNullOrEmpty(blob))
                     {
-                        request = new HttpRequestMessage(HttpMethod.Get, request.RequestUri);
-                        request.Headers.Clear();
-                        request.Headers.Add("Accept", "*/*");
                         request.Headers.Authorization = CreateAuthenticationHeaderValue(blob);
 
                         Console.WriteLine(request);
@@ -146,45 +144,6 @@ namespace NtlmHttp
             Console.WriteLine(response);
             return response;
         }
-#else
-        private async Task<HttpResponseMessage> SendAuthenticated(HttpRequestMessage request, CancellationToken cancellationToken, bool useNtlm = true)
-        {
-            // We would rather not create a new HttpClient for this of course
-            using var client = new HttpClient(InnerHandler);
-
-            request = await request.CloneAsync();
-            var ntlm = new Ntlm(NetworkCredential);
-
-            request.Headers.Authorization = CreateAuthenticationHeaderValue(ntlm.CreateNegotiateMessage(spnego: !useNtlm));
-
-            Console.WriteLine(request);
-
-            // var response = await base.SendAsync(request, cancellationToken);     TODO we would like to do this but doesn't work ?!?!?
-            var response = await client.SendAsync(request, cancellationToken);
-
-            if (response.StatusCode == HttpStatusCode.Unauthorized)
-            {
-                foreach (AuthenticationHeaderValue header in response.Headers.WwwAuthenticate)
-                {
-                    string blob = ntlm.ProcessChallenge(header);
-                    if (!string.IsNullOrEmpty(blob))
-                    {
-                        request = await request.CloneAsync();
-                        request.Headers.Authorization = CreateAuthenticationHeaderValue(blob);
-
-                        Console.WriteLine(request);
-                        // response = await base.SendAsync(request, cancellationToken); // TODO we would like to do this
-                        response = await client.SendAsync(request, cancellationToken);
-                    }
-                }
-            }
-
-            Console.WriteLine(response);
-            return response;
-        }
-
-#endif
-
 
         private AuthenticationHeaderValue CreateAuthenticationHeaderValue(string authorizationValue)
         {
